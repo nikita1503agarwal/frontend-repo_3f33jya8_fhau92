@@ -88,6 +88,9 @@ function Layout({ children }){
             {links.map(l => (
               <Link key={l.to} className={`px-3 py-1.5 rounded-full hover:bg-slate-800 ${location.pathname.startsWith(l.to) ? 'bg-slate-800' : ''}`} to={l.to}>{l.label}</Link>
             ))}
+            {user?.role === 'admin' && (
+              <Link className={`px-3 py-1.5 rounded-full hover:bg-slate-800 ${location.pathname.startsWith('/admin/pending-courts') ? 'bg-slate-800' : ''}`} to="/admin/pending-courts">Pending courts</Link>
+            )}
           </nav>
           <div className="ml-auto flex items-center gap-3">
             {user ? (
@@ -164,6 +167,7 @@ function CenterMap({ center, zoom }){
 
 function CourtsMap(){
   const { token } = useAuthContext()
+  const nav = useNavigate()
   const [q, setQ] = useState('')
   const [filters, setFilters] = useState({ indoor_outdoor: '', min_courts: '', court_type: '', lighting: '' })
   const [courts, setCourts] = useState([])
@@ -246,6 +250,7 @@ function CourtsMap(){
           <div className="ml-auto flex items-center gap-2 text-sm">
             <button onClick={()=>setViewMode('map')} className={`px-3 py-1.5 rounded ${viewMode==='map'?'bg-blue-600 text-white':'bg-slate-800'}`}>Map view</button>
             <button onClick={()=>setViewMode('list')} className={`px-3 py-1.5 rounded ${viewMode==='list'?'bg-blue-600 text-white':'bg-slate-800'}`}>List only</button>
+            <button onClick={()=>nav('/courts/new')} className="px-3 py-1.5 rounded bg-emerald-600 text-white">Submit a new court</button>
           </div>
         </div>
 
@@ -544,6 +549,188 @@ function Profile(){
   )
 }
 
+function CourtCreate(){
+  const { token } = useAuthContext()
+  const nav = useNavigate()
+  const [form, setForm] = useState({
+    name:'',
+    address_street:'', address_city:'', address_state:'', address_zip:'', address_country:'',
+    latitude:'', longitude:'',
+    number_of_courts:'', indoor_outdoor:'',
+    hours:'', court_type:'', surface_type:'', lighting:'', busy_times:'',
+    amenities:'', website_url:'', photos:''
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setSaving(true); setError('')
+    try{
+      const payload = {
+        name: form.name,
+        address_street: form.address_street,
+        address_city: form.address_city,
+        address_state: form.address_state,
+        address_zip: form.address_zip,
+        address_country: form.address_country || 'USA',
+        latitude: Number(form.latitude),
+        longitude: Number(form.longitude),
+        number_of_courts: Number(form.number_of_courts||0),
+        indoor_outdoor: form.indoor_outdoor,
+        hours: form.hours || null,
+        court_type: form.court_type,
+        surface_type: form.surface_type || null,
+        lighting: form.lighting || 'no',
+        busy_times: form.busy_times || null,
+        amenities: form.amenities ? form.amenities.split(',').map(s=>s.trim()).filter(Boolean) : [],
+        website_url: form.website_url || null,
+        photos: form.photos ? form.photos.split(',').map(s=>s.trim()).filter(Boolean) : []
+      }
+      const res = await fetch(`${API_URL}/courts`, { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` }, body: JSON.stringify(payload) })
+      if(!res.ok) throw new Error('Failed to create court')
+      alert('Thanks! Your court was submitted and is pending review.')
+      nav('/map')
+    }catch(err){ setError(err.message || 'Error') }
+    finally{ setSaving(false) }
+  }
+
+  return (
+    <div className="max-w-3xl">
+      <h2 className="text-2xl font-semibold mb-4">Submit a new court</h2>
+      <form onSubmit={submit} className="bg-slate-900 border border-slate-800 rounded-xl p-4 grid md:grid-cols-2 gap-3">
+        <div className="md:col-span-2">
+          <label className="text-sm">Name</label>
+          <input value={form.name} onChange={e=>setForm(f=>({...f, name:e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" required />
+        </div>
+        <div>
+          <label className="text-sm">Street</label>
+          <input value={form.address_street} onChange={e=>setForm(f=>({...f, address_street:e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" required />
+        </div>
+        <div>
+          <label className="text-sm">City</label>
+          <input value={form.address_city} onChange={e=>setForm(f=>({...f, address_city:e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" required />
+        </div>
+        <div>
+          <label className="text-sm">State</label>
+          <input value={form.address_state} onChange={e=>setForm(f=>({...f, address_state:e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" required />
+        </div>
+        <div>
+          <label className="text-sm">ZIP</label>
+          <input value={form.address_zip} onChange={e=>setForm(f=>({...f, address_zip:e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" required />
+        </div>
+        <div>
+          <label className="text-sm">Country</label>
+          <input value={form.address_country} onChange={e=>setForm(f=>({...f, address_country:e.target.value}))} placeholder="USA" className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" />
+        </div>
+        <div>
+          <label className="text-sm">Latitude</label>
+          <input type="number" step="0.000001" value={form.latitude} onChange={e=>setForm(f=>({...f, latitude:e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" required />
+        </div>
+        <div>
+          <label className="text-sm">Longitude</label>
+          <input type="number" step="0.000001" value={form.longitude} onChange={e=>setForm(f=>({...f, longitude:e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" required />
+        </div>
+        <div>
+          <label className="text-sm">Number of courts</label>
+          <input type="number" min="0" value={form.number_of_courts} onChange={e=>setForm(f=>({...f, number_of_courts:e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" required />
+        </div>
+        <div>
+          <label className="text-sm">Indoor/Outdoor</label>
+          <select value={form.indoor_outdoor} onChange={e=>setForm(f=>({...f, indoor_outdoor:e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" required>
+            <option value="">—</option>
+            <option value="indoor">indoor</option>
+            <option value="outdoor">outdoor</option>
+          </select>
+        </div>
+        <div>
+          <label className="text-sm">Court type</label>
+          <select value={form.court_type} onChange={e=>setForm(f=>({...f, court_type:e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" required>
+            <option value="">—</option>
+            <option>public</option>
+            <option>private club</option>
+            <option>pay to play</option>
+            <option>HOA</option>
+            <option>other</option>
+          </select>
+        </div>
+        <div>
+          <label className="text-sm">Lighting</label>
+          <select value={form.lighting} onChange={e=>setForm(f=>({...f, lighting:e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" required>
+            <option value="">—</option>
+            <option>yes</option>
+            <option>no</option>
+          </select>
+        </div>
+        <div>
+          <label className="text-sm">Surface type</label>
+          <input value={form.surface_type} onChange={e=>setForm(f=>({...f, surface_type:e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" />
+        </div>
+        <div>
+          <label className="text-sm">Hours</label>
+          <input value={form.hours} onChange={e=>setForm(f=>({...f, hours:e.target.value}))} placeholder="e.g., 7am - 10pm" className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" />
+        </div>
+        <div className="md:col-span-2">
+          <label className="text-sm">Busy times</label>
+          <input value={form.busy_times} onChange={e=>setForm(f=>({...f, busy_times:e.target.value}))} placeholder="e.g., Weeknights 6-9pm" className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" />
+        </div>
+        <div className="md:col-span-2">
+          <label className="text-sm">Amenities (comma separated)</label>
+          <input value={form.amenities} onChange={e=>setForm(f=>({...f, amenities:e.target.value}))} placeholder="restrooms, water, pro shop" className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" />
+        </div>
+        <div>
+          <label className="text-sm">Website URL</label>
+          <input value={form.website_url} onChange={e=>setForm(f=>({...f, website_url:e.target.value}))} placeholder="https://" className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" />
+        </div>
+        <div>
+          <label className="text-sm">Photo URLs (comma separated)</label>
+          <input value={form.photos} onChange={e=>setForm(f=>({...f, photos:e.target.value}))} placeholder="https://img1.jpg, https://img2.jpg" className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" />
+        </div>
+        {error && <div className="md:col-span-2 text-red-400 text-sm">{error}</div>}
+        <div className="md:col-span-2 flex gap-2 justify-end">
+          <button type="button" onClick={()=>nav(-1)} className="px-3 py-2 rounded bg-slate-700">Cancel</button>
+          <button disabled={saving} className="px-3 py-2 rounded bg-emerald-600 text-white">{saving?'Submitting...':'Submit court'}</button>
+        </div>
+      </form>
+      <p className="text-sm text-slate-400 mt-2">New submissions by regular users are set to pending review. Admins can approve or reject.</p>
+    </div>
+  )
+}
+
+function AdminPendingCourts(){
+  const { token, user } = useAuthContext()
+  const [items, setItems] = useState([])
+  const load = () => fetch(`${API_URL}/courts?status=${encodeURIComponent('pending review')}`, { headers:{ Authorization:`Bearer ${token}` } }).then(r=>r.json()).then(setItems)
+  useEffect(load, [])
+
+  if(user?.role !== 'admin') return <div>Forbidden</div>
+
+  const approve = async (id) => { await fetch(`${API_URL}/admin/courts/${id}/approve`, { method:'POST', headers:{ Authorization:`Bearer ${token}` } }); load() }
+  const reject = async (id) => { await fetch(`${API_URL}/admin/courts/${id}/reject`, { method:'POST', headers:{ Authorization:`Bearer ${token}` } }); load() }
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-2xl font-semibold">Pending courts</h2>
+      {items.length===0 && <div className="text-slate-400">No pending submissions.</div>}
+      {items.map(c => (
+        <div key={c._id} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="font-semibold">{c.name}</div>
+              <div className="text-sm opacity-80">{c.address_city}, {c.address_state} • {c.indoor_outdoor} • {c.number_of_courts} courts</div>
+              <div className="text-xs opacity-70 mt-1">Submitted by: {c.added_by_user_id || '—'}</div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={()=>approve(c._id)} className="px-3 py-1.5 rounded bg-emerald-600">Approve</button>
+              <button onClick={()=>reject(c._id)} className="px-3 py-1.5 rounded bg-rose-600">Reject</button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function Favorites(){
   const { token } = useAuthContext()
   const [items, setItems] = useState([])
@@ -566,11 +753,13 @@ function Router(){
       <Routes>
         <Route path="/auth" element={<Layout><AuthPage /></Layout>} />
         <Route path="/map" element={<AuthGate><Layout><CourtsMap /></Layout></AuthGate>} />
+        <Route path="/courts/new" element={<AuthGate><Layout><CourtCreate /></Layout></AuthGate>} />
         <Route path="/courts/:id" element={<AuthGate><Layout><CourtDetail /></Layout></AuthGate>} />
         <Route path="/feed" element={<AuthGate><Layout><Feed /></Layout></AuthGate>} />
         <Route path="/events" element={<AuthGate><Layout><Events /></Layout></AuthGate>} />
         <Route path="/favorites" element={<AuthGate><Layout><Favorites /></Layout></AuthGate>} />
-        <Route path="/profile" element={<AuthGate><Layout><Profile /></Layout></AuthGate>} />
+        <Route path="/admin/pending-courts" element={<AuthGate><Layout><AdminPendingCourts /></Layout></AuthGate>} />
+        <Route path="/" element={<Layout><AuthPage /></Layout>} />
         <Route path="*" element={<Layout><AuthPage /></Layout>} />
       </Routes>
     </AuthProvider>
