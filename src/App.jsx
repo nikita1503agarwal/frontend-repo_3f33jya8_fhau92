@@ -95,7 +95,7 @@ function Layout({ children }){
           <div className="ml-auto flex items-center gap-3">
             {user ? (
               <>
-                <span className="text-sm opacity-80">Hi, {user.display_name}</span>
+                <span className="text-sm opacity-80">Hi, {user.display_name}{typeof user.dupr_score === 'number' ? ` · DUPR ${user.dupr_score}` : ''}</span>
                 <button onClick={logout} className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm">Logout</button>
               </>
             ) : (
@@ -377,7 +377,14 @@ function CourtDetail(){
             <div className="space-y-2">
               {(court.frequent_players || []).map(p => (
                 <div key={p._id} className="text-sm flex items-center justify-between">
-                  <span>{p.display_name}</span>
+                  <span className="flex items-center gap-2">
+                    {p.avatar_url ? (
+                      <img src={p.avatar_url} alt="avatar" className="w-6 h-6 rounded-full border border-slate-800 object-cover" />
+                    ) : (
+                      <span className="w-6 h-6 rounded-full bg-slate-800 inline-block" />
+                    )}
+                    {p.display_name}
+                  </span>
                   <span className="opacity-80">DUPR {p.dupr_score ?? '—'} • {p.skill_level || '—'}</span>
                 </div>
               ))}
@@ -589,6 +596,21 @@ function Events(){
             <div className="font-semibold">{e.title}</div>
             <div className="text-sm opacity-80">{e.date} {e.start_time}-{e.end_time}</div>
             <div className="text-sm">Players: {(e.attendees||[]).length}/{e.max_players||'-'}</div>
+            {Array.isArray(e.attendees_profiles) && e.attendees_profiles.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {e.attendees_profiles.map(p => (
+                  <div key={p._id} className="text-sm flex items-center gap-2">
+                    {p.avatar_url ? (
+                      <img src={p.avatar_url} alt="avatar" className="w-6 h-6 rounded-full border border-slate-800 object-cover" />
+                    ) : (
+                      <span className="w-6 h-6 rounded-full bg-slate-800 inline-block" />
+                    )}
+                    <span className="font-medium">{p.display_name}</span>
+                    <span className="text-xs text-slate-400">DUPR {p.dupr_score ?? '—'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex gap-2 mt-2">
               <button onClick={()=>fetch(`${API_URL}/events/${e._id}/join`, { method:'POST', headers:{ Authorization:`Bearer ${token}` }}).then(load)} className="px-3 py-1.5 rounded bg-green-600">Join</button>
               <button onClick={()=>fetch(`${API_URL}/events/${e._id}/leave`, { method:'POST', headers:{ Authorization:`Bearer ${token}` }}).then(load)} className="px-3 py-1.5 rounded bg-slate-700">Leave</button>
@@ -612,8 +634,8 @@ function Profile(){
   }
 
   return (
-    <div className="max-w-2xl space-y-3">
-      <div className="grid md:grid-cols-2 gap-3">
+    <div className="max-w-2xl space-y-4">
+      <div className="grid md:grid-cols-2 gap-3 bg-slate-900 border border-slate-800 rounded-xl p-4">
         <div>
           <label className="text-sm">Display name</label>
           <input value={form.display_name||''} onChange={e=>setForm(f=>({...f, display_name: e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-900 border border-slate-800" />
@@ -630,14 +652,24 @@ function Profile(){
           <label className="text-sm">Home court ID</label>
           <input value={form.home_court_id||''} onChange={e=>setForm(f=>({...f, home_court_id: e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-900 border border-slate-800" />
         </div>
-        <div>
-          <label className="text-sm">DUPR score</label>
-          <input type="number" step="0.1" value={form.dupr_score||''} onChange={e=>setForm(f=>({...f, dupr_score: e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-900 border border-slate-800" />
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+        <h3 className="font-semibold">Update DUPR score</h3>
+        <p className="text-sm text-slate-400">This is your self-reported DUPR score. Future versions may support automatic sync.</p>
+        <div className="grid md:grid-cols-2 gap-3">
+          <div>
+            <label className="text-sm">DUPR score</label>
+            <input type="number" step="0.1" value={form.dupr_score||''} onChange={e=>setForm(f=>({...f, dupr_score: e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" />
+          </div>
+          <div>
+            <label className="text-sm">DUPR profile link (optional)</label>
+            <input value={form.dupr_profile_url||''} onChange={e=>setForm(f=>({...f, dupr_profile_url: e.target.value}))} placeholder="https://mydupr.com/..." className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" />
+          </div>
         </div>
-        <div>
-          <label className="text-sm">DUPR profile link</label>
-          <input value={form.dupr_profile_url||''} onChange={e=>setForm(f=>({...f, dupr_profile_url: e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-900 border border-slate-800" />
-        </div>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-3 bg-slate-900 border border-slate-800 rounded-xl p-4">
         <div>
           <label className="text-sm">Skill level</label>
           <select value={form.skill_level||''} onChange={e=>setForm(f=>({...f, skill_level: e.target.value}))} className="w-full mt-1 px-3 py-2 rounded bg-slate-900 border border-slate-800">
@@ -658,11 +690,15 @@ function Profile(){
           </select>
         </div>
       </div>
-      <div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
         <label className="text-sm">Bio</label>
         <textarea value={form.bio||''} onChange={e=>setForm(f=>({...f, bio: e.target.value}))} rows={4} className="w-full mt-1 px-3 py-2 rounded bg-slate-900 border border-slate-800" />
       </div>
-      <button onClick={save} className="px-3 py-2 rounded bg-blue-600">Save</button>
+
+      <div className="flex gap-2 justify-end">
+        <button onClick={save} className="px-3 py-2 rounded bg-blue-600">Save</button>
+      </div>
     </div>
   )
 }
