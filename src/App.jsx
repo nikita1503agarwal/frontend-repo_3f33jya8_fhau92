@@ -402,41 +402,159 @@ function CourtDetail(){
 }
 
 function Feed(){
-  const { token } = useAuthContext()
+  const { token, user } = useAuthContext()
   const [filter, setFilter] = useState('all')
+  const [sort, setSort] = useState('newest')
   const [posts, setPosts] = useState([])
-  const [text, setText] = useState('')
 
-  const load = () => { fetch(`${API_URL}/feed?filter=${filter}`, { headers: { Authorization: `Bearer ${token}` } }).then(r=>r.json()).then(setPosts) }
-  useEffect(load, [filter])
+  // Composer state
+  const [text, setText] = useState('')
+  const [photoUrl, setPhotoUrl] = useState('')
+  const [courtId, setCourtId] = useState('')
+  const [courts, setCourts] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  // Load courts for tagging dropdown
+  useEffect(() => {
+    fetch(`${API_URL}/courts?status=active`)
+      .then(r=>r.json())
+      .then(setCourts)
+      .catch(()=>{})
+  }, [])
+
+  const load = () => {
+    setLoading(true)
+    fetch(`${API_URL}/feed?filter=${filter}&sort=${sort}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r=>r.json())
+      .then(setPosts)
+      .finally(()=>setLoading(false))
+  }
+  useEffect(load, [filter, sort])
 
   const submit = async () => {
-    await fetch(`${API_URL}/feed`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ text }) })
-    setText(''); load()
+    if (!text.trim() && !photoUrl.trim()) return
+    await fetch(`${API_URL}/feed`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ text, photo_url: photoUrl || null, court_id: courtId || null }) })
+    setText(''); setPhotoUrl(''); setCourtId(''); load()
+  }
+
+  const like = async (id) => {
+    await fetch(`${API_URL}/feed/${id}/like`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+    load()
   }
 
   return (
-    <div className="grid md:grid-cols-[380px_1fr] gap-6">
+    <div className="grid md:grid-cols-[360px_1fr] gap-6">
       <div className="space-y-3">
-        <select value={filter} onChange={e=>setFilter(e.target.value)} className="w-full px-3 py-2 rounded bg-slate-900 border border-slate-800">
-          <option value="all">All</option>
-          <option value="mycourts">My courts only</option>
-          <option value="nearme">Near me</option>
-        </select>
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-          <h3 className="font-semibold mb-2">Create post</h3>
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+          <h3 className="font-semibold">Create post</h3>
           <textarea value={text} onChange={e=>setText(e.target.value)} rows={3} className="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" placeholder="Share something..." />
-          <button onClick={submit} className="mt-2 px-3 py-2 rounded bg-blue-600">Post</button>
+          <div>
+            <label className="text-sm">Image URL (optional)</label>
+            <input value={photoUrl} onChange={e=>setPhotoUrl(e.target.value)} placeholder="https://image.jpg" className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" />
+          </div>
+          <div>
+            <label className="text-sm">Tag a court (optional)</label>
+            <select value={courtId} onChange={e=>setCourtId(e.target.value)} className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700">
+              <option value="">—</option>
+              {courts.map(c => (
+                <option key={c._id} value={c._id}>{c.name} • {c.address_city}</option>
+              ))}
+            </select>
+          </div>
+          <button onClick={submit} className="w-full px-3 py-2 rounded bg-blue-600">Post</button>
+          <p className="text-xs text-slate-400">Tip: "Near me" uses the home court set in your profile.</p>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2">
+          <div>
+            <label className="text-sm">Show</label>
+            <select value={filter} onChange={e=>setFilter(e.target.value)} className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700">
+              <option value="all">All</option>
+              <option value="mycourts">My courts</option>
+              <option value="nearme">Near me</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-sm">Sort by</label>
+            <select value={sort} onChange={e=>setSort(e.target.value)} className="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700">
+              <option value="newest">Newest</option>
+              <option value="most_liked">Most liked</option>
+            </select>
+          </div>
         </div>
       </div>
+
       <div className="space-y-3">
+        {loading && <div className="text-slate-400">Loading...</div>}
         {posts.map(p => (
-          <div key={p._id} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-            <div className="text-sm opacity-80">{new Date(p.created_at).toLocaleString?.() || ''}</div>
-            <div>{p.text}</div>
-          </div>
+          <PostCard key={p._id} post={p} onLike={()=>like(p._id)} token={token} />
         ))}
+        {!loading && posts.length === 0 && (
+          <div className="text-slate-400">No posts yet.</div>
+        )}
       </div>
+    </div>
+  )
+}
+
+function PostCard({ post, onLike, token }){
+  const [comments, setComments] = useState([])
+  const [showComments, setShowComments] = useState(false)
+  const [commentText, setCommentText] = useState('')
+
+  const loadComments = () => {
+    fetch(`${API_URL}/feed/${post._id}/comments`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r=>r.json()).then(setComments)
+  }
+
+  useEffect(() => { if (showComments) loadComments() }, [showComments])
+
+  const addComment = async () => {
+    if (!commentText.trim()) return
+    await fetch(`${API_URL}/feed/${post._id}/comment`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ post_id: post._id, text: commentText }) })
+    setCommentText('')
+    loadComments()
+  }
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+      <div className="flex items-start gap-3">
+        <div className="flex-1">
+          <div className="text-sm opacity-80">{new Date(post.created_at).toLocaleString?.() || ''}</div>
+          <div className="whitespace-pre-wrap">{post.text}</div>
+          {post.photo_url && (
+            <img src={post.photo_url} alt="post" className="mt-3 rounded-lg border border-slate-800 max-h-96 object-cover" />
+          )}
+          {post.court_id && (
+            <div className="mt-2 text-xs text-slate-400">Tagged court: {post.court_id}</div>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-3 mt-3 text-sm">
+        <button onClick={onLike} className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700">Like ({(post.likes||[]).length})</button>
+        <button onClick={()=>setShowComments(s=>!s)} className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700">{showComments?'Hide':'Comments'}</button>
+      </div>
+
+      {showComments && (
+        <div className="mt-3 space-y-3">
+          <div className="flex items-center gap-2">
+            <input value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="Write a comment" className="flex-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" />
+            <button onClick={addComment} className="px-3 py-2 rounded bg-blue-600">Post</button>
+          </div>
+          <div className="space-y-2">
+            {comments.map(c => (
+              <div key={c._id} className="flex items-start gap-3">
+                <img src={c.author?.avatar_url || 'https://api.dicebear.com/7.x/identicon/svg?seed=user'} alt="avatar" className="w-8 h-8 rounded-full border border-slate-800 object-cover" />
+                <div className="flex-1">
+                  <div className="text-sm"><span className="font-medium">{c.author?.display_name || 'Player'}</span> <span className="text-xs text-slate-400">DUPR {c.author?.dupr_score ?? '—'}</span></div>
+                  <div className="text-sm">{c.text}</div>
+                  <div className="text-xs text-slate-500">{new Date(c.created_at).toLocaleString?.() || ''}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
