@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom'
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
 
 const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
@@ -155,15 +156,68 @@ function AuthPage(){
   )
 }
 
+function CenterMap({ center, zoom }){
+  const map = useMap()
+  useEffect(()=>{ if(center) map.setView(center, zoom ?? map.getZoom()) }, [center, zoom])
+  return null
+}
+
 function CourtsMap(){
   const { token } = useAuthContext()
   const [q, setQ] = useState('')
   const [filters, setFilters] = useState({ indoor_outdoor: '', min_courts: '', court_type: '', lighting: '' })
   const [courts, setCourts] = useState([])
+  const [viewMode, setViewMode] = useState('map') // 'map' | 'list'
+  const [userCenter, setUserCenter] = useState(null)
+  const [hoveredId, setHoveredId] = useState(null)
+  const listContainerRef = useRef(null)
+  const itemRefs = useRef({})
   const headers = useMemo(()=> token ? { Authorization: `Bearer ${token}` } : {}, [token])
 
   useEffect(()=>{ fetch(`${API_URL}/courts?status=active&q=${encodeURIComponent(q)}&indoor_outdoor=${filters.indoor_outdoor}&min_courts=${filters.min_courts}&court_type=${filters.court_type}&lighting=${filters.lighting}`, { headers })
     .then(r=>r.json()).then(setCourts) }, [q, filters])
+
+  // Request geolocation and set default center
+  useEffect(() => {
+    let didCancel = false
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          if (didCancel) return
+          setUserCenter([pos.coords.latitude, pos.coords.longitude])
+        },
+        () => {
+          if (didCancel) return
+          setUserCenter([39.8283, -98.5795]) // USA centroid fallback
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      )
+    } else {
+      setUserCenter([39.8283, -98.5795])
+    }
+    return () => { didCancel = true }
+  }, [])
+
+  const onPinClick = (id) => {
+    const el = itemRefs.current[id]
+    if (el && listContainerRef.current) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      // also briefly accent the item
+      el.classList.add('ring-2','ring-blue-500')
+      setTimeout(()=>{
+        el.classList.remove('ring-2','ring-blue-500')
+      }, 900)
+    }
+  }
+
+  const onItemHover = (id) => {
+    setHoveredId(id)
+    // clear after a brief moment to create a pulse
+    setTimeout(() => { setHoveredId(h => h === id ? null : h) }, 1200)
+  }
+
+  const centerToUse = userCenter || [39.8283, -98.5795]
+  const zoomToUse = userCenter ? 11 : 4
 
   return (
     <div className="grid md:grid-cols-[1fr_380px] gap-4">
@@ -189,14 +243,55 @@ function CourtsMap(){
             <option>yes</option>
             <option>no</option>
           </select>
+          <div className="ml-auto flex items-center gap-2 text-sm">
+            <button onClick={()=>setViewMode('map')} className={`px-3 py-1.5 rounded ${viewMode==='map'?'bg-blue-600 text-white':'bg-slate-800'}`}>Map view</button>
+            <button onClick={()=>setViewMode('list')} className={`px-3 py-1.5 rounded ${viewMode==='list'?'bg-blue-600 text-white':'bg-slate-800'}`}>List only</button>
+          </div>
         </div>
-        <div className="h-[60vh] rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400">
-          Map placeholder — pins will appear here.
-        </div>
+
+        {viewMode === 'map' ? (
+          <div className="h-[60vh] rounded-xl border border-slate-800 overflow-hidden">
+            <MapContainer center={centerToUse} zoom={zoomToUse} className="h-full w-full" preferCanvas>
+              <TileLayer
+                attribution='&copy; OpenStreetMap contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <CenterMap center={centerToUse} zoom={zoomToUse} />
+              {courts.filter(c=>c.latitude && c.longitude).map(c => (
+                <CircleMarker
+                  key={c._id}
+                  center={[c.latitude, c.longitude]}
+                  radius={hoveredId===c._id ? 10 : 6}
+                  pathOptions={{ color: hoveredId===c._id ? '#60a5fa' : '#22d3ee', weight: hoveredId===c._id ? 4 : 2, fillColor: hoveredId===c._id ? '#60a5fa' : '#22d3ee', fillOpacity: 0.7 }}
+                  eventHandlers={{ click: () => onPinClick(c._id) }}
+                >
+                  <Popup>
+                    <div className="space-y-1">
+                      <div className="font-semibold">{c.name}</div>
+                      <div className="text-xs opacity-80">{c.address_city}, {c.address_state}</div>
+                      <button onClick={()=>onPinClick(c._id)} className="mt-1 text-xs px-2 py-1 rounded bg-blue-600 text-white">View in list</button>
+                    </div>
+                  </Popup>
+                </CircleMarker>
+              ))}
+            </MapContainer>
+          </div>
+        ) : (
+          <div className="h-[60vh] rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400">
+            List only mode is active.
+          </div>
+        )}
       </div>
-      <div className="space-y-2 max-h-[70vh] overflow-auto">
+
+      <div ref={listContainerRef} className="space-y-2 max-h-[70vh] overflow-auto">
         {courts.map(c => (
-          <Link key={c._id} to={`/courts/${c._id}`} className="block bg-slate-900 border border-slate-800 rounded-lg p-4 hover:border-slate-700">
+          <Link
+            key={c._id}
+            to={`/courts/${c._id}`}
+            ref={el => { if (el) itemRefs.current[c._id] = el }}
+            onMouseEnter={()=>onItemHover(c._id)}
+            className={`block bg-slate-900 border border-slate-800 rounded-lg p-4 hover:border-slate-700 transition ${hoveredId===c._id ? 'ring-1 ring-blue-500' : ''}`}
+          >
             <div className="font-semibold">{c.name}</div>
             <div className="text-sm opacity-80">{c.address_city}, {c.address_state}</div>
             <div className="text-xs opacity-70 mt-1">{c.indoor_outdoor} • {c.number_of_courts} courts • {c.lighting==='yes'?'lights':'no lights'}</div>
